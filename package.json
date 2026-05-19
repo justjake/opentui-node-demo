@@ -1,0 +1,20 @@
+{
+  "name": "opentui-node-demo",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "demo:core": "node index.js",
+    "demo:react": "node --import tsx react.jsx",
+    "test": "node index.js --duration=1 && node --import tsx react.jsx --duration=1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@jitl/opentui-core": "^0.1.97",
+    "@jitl/opentui-react": "^0.1.97",
+    "react": "^19.2.6",
+    "tsx": "^4.22.3"
+  }
+}

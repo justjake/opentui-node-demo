@@ -7,6 +7,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 const palette = ["#20f6ff", "#7c5cff", "#ff3df2", "#ffbf3d", "#5dff9b"]
 const dragPalette = ["#20f6ff", "#ff3df2", "#ffbf3d", "#5dff9b", "#7c5cff", "#ff6b6b", "#8cfffb"]
+const sparkPalette = ["#ffffff", "#ffe9c2", "#fff48f", "#c2faff", "#ffc2f0", "#a8ffd0", "#ffb1f3"]
+const sparkChars = ["·", "*", "+", "•", "✦", "✧", "◦"]
 
 const shapeBlueprints = [
   { id: "dvd", kind: "dvd", label: "DVD", color: "#ffbf3d", x: 46, y: 4, vx: 0.62, vy: 0.36 },
@@ -27,6 +29,16 @@ const shapeSizes = {
   frame: { width: 15, height: 5 },
   ribbon: { width: 19, height: 4 },
 }
+
+const MAX_PARTICLES = 140
+const MAX_EVENTS = 5
+const MAX_TRAIL = 10
+const MAX_RIPPLES = 10
+const EQ_BARS = 24
+
+let nextParticleId = 1
+let nextEventId = 1
+let nextRippleId = 1
 
 function parseDuration(argv) {
   const durationArg = argv.find((arg) => arg.startsWith("--duration="))
@@ -56,7 +68,7 @@ function seedShapes(width, height) {
     const bounds = boundsFor(seeded, width, height)
     return {
       ...seeded,
-      colorIndex: dragPalette.indexOf(seeded.color),
+      colorIndex: Math.max(0, dragPalette.indexOf(seeded.color)),
       x: clamp(seeded.x, 1, bounds.maxX),
       y: clamp(seeded.y, 4, bounds.maxY),
     }
@@ -85,6 +97,162 @@ function shapeLines(shape, tick, active) {
     default:
       return [shape.label]
   }
+}
+
+function makeParticle(x, y, opts = {}) {
+  const angle = opts.angle ?? Math.random() * Math.PI * 2
+  const speed = opts.speed ?? 0.4 + Math.random() * 1.1
+  const maxLife = opts.maxLife ?? 14 + Math.floor(Math.random() * 16)
+  return {
+    id: nextParticleId++,
+    x,
+    y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed * 0.65 - 0.08,
+    life: 0,
+    maxLife,
+    color: opts.color ?? sparkPalette[Math.floor(Math.random() * sparkPalette.length)],
+    char: opts.char ?? sparkChars[Math.floor(Math.random() * sparkChars.length)],
+  }
+}
+
+function burstAt(x, y, count, baseColor) {
+  const out = []
+  for (let i = 0; i < count; i++) {
+    out.push(
+      makeParticle(x, y, {
+        angle: Math.random() * Math.PI * 2,
+        speed: 0.35 + Math.random() * 1.4,
+        color: Math.random() < 0.55 ? baseColor : sparkPalette[Math.floor(Math.random() * sparkPalette.length)],
+      }),
+    )
+  }
+  return out
+}
+
+function Ripples({ ripples }) {
+  return (
+    <>
+      {ripples.flatMap((r) => {
+        const frac = r.age / r.maxAge
+        if (frac >= 1) return []
+        const baseRadius = 2 + r.age * 1.4
+        return [0, 1].map((ring) => {
+          const radius = Math.round(baseRadius + ring * 1.5)
+          const halfW = radius
+          const halfH = Math.max(1, Math.round(radius / 2))
+          const left = r.cx - halfW
+          const top = r.cy - halfH
+          const w = halfW * 2
+          const h = halfH * 2
+          if (w < 2 || h < 2) return null
+          const opacity = Math.max(0, (1 - frac) * (ring === 0 ? 0.55 : 0.25))
+          return (
+            <box
+              key={`ripple-${r.id}-${ring}`}
+              position="absolute"
+              left={left}
+              top={top}
+              width={w}
+              height={h}
+              zIndex={3 + ring}
+              opacity={opacity}
+              border
+              borderStyle="rounded"
+              borderColor={r.color}
+            />
+          )
+        })
+      })}
+    </>
+  )
+}
+
+function ParticleField({ particles }) {
+  return (
+    <>
+      {particles.map((p) => {
+        const lifeFrac = p.life / p.maxLife
+        if (lifeFrac >= 1) return null
+        const opacity = Math.max(0.1, 1 - lifeFrac)
+        return (
+          <box
+            key={`p-${p.id}`}
+            position="absolute"
+            left={Math.round(p.x)}
+            top={Math.round(p.y)}
+            width={1}
+            height={1}
+            zIndex={70}
+            opacity={opacity}
+          >
+            <text
+              selectable={false}
+              fg={p.color}
+              attributes={lifeFrac < 0.45 ? TextAttributes.BOLD : TextAttributes.DIM}
+            >
+              {p.char}
+            </text>
+          </box>
+        )
+      })}
+    </>
+  )
+}
+
+function MouseCursor({ trail, current, tick }) {
+  if (!current || current.x < 0 || current.y < 0) return null
+  return (
+    <>
+      {trail.map((point, i) => {
+        const fade = 1 - i / Math.max(1, trail.length)
+        return (
+          <box
+            key={`mt-${point.t}-${i}`}
+            position="absolute"
+            left={point.x}
+            top={point.y}
+            width={1}
+            height={1}
+            zIndex={85}
+            opacity={Math.max(0.08, fade * 0.7)}
+          >
+            <text selectable={false} fg={sparkPalette[(point.t + i) % sparkPalette.length]}>
+              {sparkChars[i % sparkChars.length]}
+            </text>
+          </box>
+        )
+      })}
+      <box position="absolute" left={current.x} top={current.y} width={1} height={1} zIndex={120}>
+        <text selectable={false} fg="#ffffff" attributes={TextAttributes.BOLD}>
+          {tick % 4 < 2 ? "✦" : "✧"}
+        </text>
+      </box>
+    </>
+  )
+}
+
+function EqualizerStrip({ bars, tick }) {
+  return (
+    <box flexDirection="row" gap={0} height={5} alignItems="flex-end">
+      {bars.map((value, i) => {
+        const h = Math.max(1, Math.round(value * 5))
+        const color = palette[(i + Math.floor(tick / 5)) % palette.length]
+        return (
+          <box
+            key={`eq-${i}`}
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="flex-end"
+            width={2}
+            height={5}
+          >
+            <box width={1} height={h} backgroundColor={color} />
+          </box>
+        )
+      })}
+    </box>
+  )
 }
 
 function StatBar({ label, value, color }) {
@@ -124,64 +292,6 @@ function SignalDots({ tick }) {
   )
 }
 
-function ColorMixLayer({ tick, compact }) {
-  const sweepX = compact ? 4 + (tick % 28) : 8 + (tick % 54)
-  const pads = [
-    { left: compact ? 4 : 12, top: compact ? 5 : 8, width: 24, height: 8, color: "#20f6ff", label: "cyan", opacity: 0.34 },
-    { left: compact ? 16 : 29, top: compact ? 8 : 11, width: 25, height: 8, color: "#ff3df2", label: "magenta", opacity: 0.32 },
-    { left: compact ? 10 : 48, top: compact ? 12 : 15, width: 28, height: 7, color: "#ffbf3d", label: "amber", opacity: 0.26 },
-    { left: compact ? 23 : 72, top: compact ? 6 : 10, width: 24, height: 9, color: "#5dff9b", label: "green", opacity: 0.25 },
-  ]
-
-  return (
-    <>
-      {pads.map((pad, index) => (
-        <box
-          key={pad.label}
-          position="absolute"
-          left={pad.left}
-          top={pad.top}
-          width={pad.width}
-          height={pad.height}
-          zIndex={8 + index}
-          opacity={pad.opacity + Math.sin(tick / 18 + index) * 0.05}
-          backgroundColor={pad.color}
-          border
-          borderStyle="rounded"
-          borderColor={pad.color}
-          alignItems="center"
-          justifyContent="center"
-        >
-          <text selectable={false} fg="#050711" attributes={TextAttributes.BOLD}>
-            {pad.label}
-          </text>
-        </box>
-      ))}
-
-      <box
-        position="absolute"
-        left={sweepX}
-        top={compact ? 3 : 4}
-        width={compact ? 26 : 42}
-        height={1}
-        zIndex={18}
-        opacity={0.42}
-        backgroundColor={dragPalette[Math.floor(tick / 8) % dragPalette.length]}
-      />
-      <box
-        position="absolute"
-        left={Math.max(1, sweepX - 6)}
-        top={compact ? 4 : 5}
-        width={compact ? 18 : 28}
-        height={1}
-        zIndex={17}
-        opacity={0.18}
-        backgroundColor="#ffffff"
-      />
-    </>
-  )
-}
-
 function ShapeTrail({ shape, tick }) {
   const speed = Math.min(1, Math.abs(shape.vx) + Math.abs(shape.vy))
   if (speed < 0.08) return null
@@ -209,8 +319,9 @@ function ShapeTrail({ shape, tick }) {
   )
 }
 
-function FloatingShape({ shape, tick, active, onMouseDown, onMouseDrag, onMouseDragEnd, onMouseOver, onMouseOut }) {
+function FloatingShape({ shape, tick, active, onMouseDown, onMouseDrag, onMouseDragEnd, onMouseUp, onMouseOver, onMouseOut }) {
   const lines = shapeLines(shape, tick, active)
+  const isDvd = shape.kind === "dvd"
 
   return (
     <box
@@ -219,12 +330,12 @@ function FloatingShape({ shape, tick, active, onMouseDown, onMouseDrag, onMouseD
       top={Math.round(shape.y)}
       width={shape.width}
       height={shape.height}
-      zIndex={active ? 80 : 40 + shape.index}
-      opacity={active ? 1 : 0.88}
+      zIndex={active ? 80 : isDvd ? 60 : 40 + shape.index}
+      opacity={active || isDvd ? 1 : 0.88}
       flexDirection="column"
       justifyContent="center"
       alignItems="center"
-      backgroundColor={active ? "#11172d" : "transparent"}
+      backgroundColor={active ? "#11172d" : isDvd ? "#050711" : "transparent"}
       border={active || shape.kind === "capsule" || shape.kind === "frame" || shape.kind === "dvd"}
       borderStyle={active ? "double" : "rounded"}
       borderColor={shape.color}
@@ -232,6 +343,7 @@ function FloatingShape({ shape, tick, active, onMouseDown, onMouseDrag, onMouseD
       onMouseDown={onMouseDown}
       onMouseDrag={onMouseDrag}
       onMouseDragEnd={onMouseDragEnd}
+      onMouseUp={onMouseUp}
       onMouseOver={onMouseOver}
       onMouseOut={onMouseOut}
     >
@@ -265,6 +377,7 @@ function RuntimeCard({ tick, width, height }) {
       flexDirection="column"
       gap={1}
       flexGrow={1}
+      minWidth={32}
     >
       <text selectable={false} fg="#ffffff" attributes={TextAttributes.BOLD}>
         Hooks are driving OpenTUI renderables
@@ -319,67 +432,386 @@ function JsxCard({ tick }) {
   )
 }
 
+function LiveClock() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 200)
+    return () => clearInterval(t)
+  }, [])
+  const ms = now.getMilliseconds().toString().padStart(3, "0")
+  return (
+    <text selectable={false} fg="#dfe5ff" attributes={TextAttributes.BOLD}>
+      {now.toLocaleTimeString()}.{ms.slice(0, 2)}
+    </text>
+  )
+}
+
+function TelemetryCard({ tick, fps, particleCount, events, paused, bars }) {
+  return (
+    <box
+      title=" Telemetry "
+      border
+      borderStyle="rounded"
+      borderColor="#5dff9b"
+      backgroundColor="#070c17"
+      padding={1}
+      flexDirection="column"
+      gap={1}
+      width={38}
+      minWidth={30}
+    >
+      <box flexDirection="row" justifyContent="space-between">
+        <text
+          selectable={false}
+          fg={paused ? "#ffbf3d" : "#5dff9b"}
+          attributes={TextAttributes.BOLD}
+        >
+          {paused ? "⏸  PAUSED" : "● LIVE"}
+        </text>
+        <LiveClock />
+      </box>
+
+      <box flexDirection="row" gap={2}>
+        <box flexDirection="column">
+          <text selectable={false} fg="#8490bb" attributes={TextAttributes.DIM}>
+            fps
+          </text>
+          <text selectable={false} fg="#ffffff" attributes={TextAttributes.BOLD}>
+            {fps.toFixed(0).padStart(2, "0")}
+          </text>
+        </box>
+        <box flexDirection="column">
+          <text selectable={false} fg="#8490bb" attributes={TextAttributes.DIM}>
+            sparks
+          </text>
+          <text selectable={false} fg="#ffffff" attributes={TextAttributes.BOLD}>
+            {particleCount.toString().padStart(3, "0")}
+          </text>
+        </box>
+        <box flexDirection="column">
+          <text selectable={false} fg="#8490bb" attributes={TextAttributes.DIM}>
+            tick
+          </text>
+          <text selectable={false} fg="#ffffff" attributes={TextAttributes.BOLD}>
+            {tick.toString().padStart(5, "0")}
+          </text>
+        </box>
+      </box>
+
+      <EqualizerStrip bars={bars} tick={tick} />
+
+      <text selectable={false} fg="#7c5cff" attributes={TextAttributes.BOLD}>
+        event log
+      </text>
+      <box flexDirection="column" gap={0} flexGrow={1}>
+        {events.length === 0 ? (
+          <text selectable={false} fg="#8490bb" attributes={TextAttributes.DIM}>
+            (drag a shape to fling it)
+          </text>
+        ) : (
+          events.map((ev, idx) => (
+            <text
+              key={ev.id}
+              selectable={false}
+              fg={ev.color}
+              attributes={idx === 0 ? TextAttributes.BOLD : TextAttributes.DIM}
+            >
+              {ev.text}
+            </text>
+          ))
+        )}
+      </box>
+    </box>
+  )
+}
+
+function HelpOverlay({ tick }) {
+  const rows = [
+    { key: "q  /  Esc", desc: "quit the demo" },
+    { key: "?", desc: "toggle this help" },
+    { key: "Space", desc: "pause / resume animation" },
+    { key: "r", desc: "scatter all shapes" },
+    { key: "c", desc: "clear particles" },
+    { key: "drag", desc: "grab a shape and fling" },
+  ]
+
+  return (
+    <box
+      position="absolute"
+      left={0}
+      top={0}
+      width="100%"
+      height="100%"
+      zIndex={200}
+      justifyContent="center"
+      alignItems="center"
+      backgroundColor="transparent"
+    >
+      <box
+        width={52}
+        border
+        borderStyle="double"
+        borderColor={dragPalette[Math.floor(tick / 6) % dragPalette.length]}
+        backgroundColor="#0a0d1c"
+        padding={2}
+        flexDirection="column"
+        gap={1}
+        alignItems="center"
+      >
+        <ascii-font
+          selectable={false}
+          text="HELP"
+          font="tiny"
+          color={["#20f6ff", "#7c5cff", "#ff3df2", "#ffbf3d", "#5dff9b"]}
+        />
+        <text selectable={false} fg="#cdd4f6" attributes={TextAttributes.DIM}>
+          OpenTUI React keyboard map
+        </text>
+        <box flexDirection="column" gap={0} width={42}>
+          {rows.map((row) => (
+            <box key={row.key} flexDirection="row" justifyContent="space-between" height={1}>
+              <text selectable={false} fg="#20f6ff" attributes={TextAttributes.BOLD}>
+                {row.key}
+              </text>
+              <text selectable={false} fg="#dfe5ff">
+                {row.desc}
+              </text>
+            </box>
+          ))}
+        </box>
+        <text selectable={false} fg="#8490bb" attributes={TextAttributes.DIM}>
+          press ? again to close
+        </text>
+      </box>
+    </box>
+  )
+}
+
 function App({ duration }) {
   const renderer = useRenderer()
   const { width, height } = useTerminalDimensions()
   const [tick, setTick] = useState(0)
   const [activeId, setActiveId] = useState(null)
   const [shapes, setShapes] = useState(() => seedShapes(width, height))
+  const [particles, setParticles] = useState([])
+  const [ripples, setRipples] = useState([])
+  const [events, setEvents] = useState([])
+  const [showHelp, setShowHelp] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [bars, setBars] = useState(() => Array(EQ_BARS).fill(0.2))
+  const [fps, setFps] = useState(30)
+  const [trail, setTrail] = useState([])
   const dragRef = useRef(null)
+  const mouseRef = useRef({ x: -1, y: -1 })
+  const fpsRef = useRef({ frames: 0, lastTime: Date.now() })
 
   useKeyboard((key) => {
     if (key.name === "q" || key.name === "escape" || (key.ctrl && key.name === "c")) {
       renderer.destroy()
+      return
+    }
+    if (key.name === "?" || (key.shift && key.name === "/")) {
+      setShowHelp((v) => !v)
+      return
+    }
+    if (key.name === "space") {
+      setPaused((v) => !v)
+      return
+    }
+    if (key.name === "r") {
+      setShapes((current) =>
+        current.map((shape) => ({
+          ...shape,
+          vx: (Math.random() - 0.5) * 2.4,
+          vy: (Math.random() - 0.5) * 1.6,
+        })),
+      )
+      setParticles((current) => {
+        const burst = []
+        shapes.forEach((s) => {
+          burst.push(...burstAt(s.x + s.width / 2, s.y + s.height / 2, 6, s.color))
+        })
+        return [...current, ...burst].slice(-MAX_PARTICLES)
+      })
+      setEvents((current) =>
+        [
+          {
+            id: nextEventId++,
+            text: `[${tick.toString().padStart(4, "0")}] *** scatter! ***`,
+            color: "#ffbf3d",
+          },
+          ...current,
+        ].slice(0, MAX_EVENTS),
+      )
+      return
+    }
+    if (key.name === "c") {
+      setParticles([])
+      return
     }
   })
 
   useEffect(() => {
     renderer.setTerminalTitle("OpenTUI React under Node.js")
+  }, [renderer])
+
+  useEffect(() => {
+    if (paused) return
     const interval = setInterval(() => {
-      setTick((value) => {
-        const nextTick = value + 1
-        setShapes((current) =>
-          current.map((shape) => {
-            if (dragRef.current?.id === shape.id) return shape
+      const spawn = []
+      const tickEvents = []
+      const spawnRipples = []
 
-            let x = shape.x + shape.vx
-            let y = shape.y + shape.vy
-            let vx = shape.vx * 0.988
-            let vy = shape.vy * 0.988 + Math.sin((shape.index + nextTick) / 18) * 0.006
-            const bounds = boundsFor(shape, width, height)
-            const bouncedX = x <= 0 || x >= bounds.maxX
-            const bouncedY = y <= 1 || y >= bounds.maxY
+      setShapes((current) =>
+        current.map((shape) => {
+          if (dragRef.current?.id === shape.id) return shape
 
-            if (bouncedX) {
-              x = clamp(x, 0, bounds.maxX)
-              vx = -vx * 0.78
+          const isDvd = shape.kind === "dvd"
+
+          let x = shape.x + shape.vx
+          let y = shape.y + shape.vy
+          let vx = isDvd ? shape.vx : shape.vx * 0.988
+          let vy = isDvd ? shape.vy : shape.vy * 0.988 + Math.sin((shape.index + tick) / 18) * 0.006
+          const bounds = boundsFor(shape, width, height)
+          const bouncedX = x <= 0 || x >= bounds.maxX
+          const bouncedY = y <= 1 || y >= bounds.maxY
+
+          if (bouncedX) {
+            x = clamp(x, 0, bounds.maxX)
+            vx = isDvd ? -vx : -vx * 0.78
+          }
+          if (bouncedY) {
+            y = clamp(y, 1, bounds.maxY)
+            vy = isDvd ? -vy : -vy * 0.78
+          }
+
+          if (isDvd) {
+            const minSpeed = 0.55
+            const speed = Math.hypot(vx, vy)
+            if (speed < minSpeed) {
+              const angle = speed < 1e-4 ? Math.random() * Math.PI * 2 : Math.atan2(vy, vx)
+              vx = Math.cos(angle) * minSpeed
+              vy = Math.sin(angle) * minSpeed * 0.65
             }
-            if (bouncedY) {
-              y = clamp(y, 1, bounds.maxY)
-              vy = -vy * 0.78
+          } else {
+            if (Math.abs(vx) < 0.018) vx = Math.sin((tick + shape.index) / 13) * 0.035
+            if (Math.abs(vy) < 0.018) vy = Math.cos((tick + shape.index) / 15) * 0.03
+          }
+
+          const bounced = bouncedX || bouncedY
+          const colorIndex = bounced ? ((shape.colorIndex ?? 0) + 1) % dragPalette.length : shape.colorIndex
+          const color = shape.kind === "dvd" && bounced ? dragPalette[colorIndex ?? 0] : shape.color
+
+          if (bounced) {
+            const cx = x + shape.width / 2
+            const cy = y + shape.height / 2
+            const count = 6 + Math.floor(Math.random() * 5)
+            for (let k = 0; k < count; k++) {
+              spawn.push(
+                makeParticle(cx, cy, {
+                  color: Math.random() < 0.4 ? dragPalette[colorIndex % dragPalette.length] : shape.color,
+                  speed: 0.6 + Math.random() * 1.6,
+                  maxLife: 18 + Math.floor(Math.random() * 14),
+                }),
+              )
             }
+            spawnRipples.push({
+              id: nextRippleId++,
+              cx: Math.round(cx),
+              cy: Math.round(cy),
+              age: 0,
+              maxAge: 22,
+              color: shape.color,
+            })
+            tickEvents.push({
+              text: `${shape.label} bounce`,
+              color: shape.color,
+            })
+          }
 
-            if (Math.abs(vx) < 0.018) vx = Math.sin((nextTick + shape.index) / 13) * 0.035
-            if (Math.abs(vy) < 0.018) vy = Math.cos((nextTick + shape.index) / 15) * 0.03
+          return { ...shape, x, y, vx, vy, colorIndex, color }
+        }),
+      )
 
-            const colorIndex = shape.kind === "dvd" && (bouncedX || bouncedY) ? ((shape.colorIndex ?? 0) + 1) % dragPalette.length : shape.colorIndex
-
-            return {
-              ...shape,
-              x,
-              y,
-              vx,
-              vy,
-              colorIndex,
-              color: shape.kind === "dvd" ? dragPalette[colorIndex ?? 0] : shape.color,
-            }
-          }),
-        )
-        return nextTick
+      setParticles((current) => {
+        const moved = []
+        for (const p of current) {
+          const nx = p.x + p.vx
+          const ny = p.y + p.vy
+          const nextLife = p.life + 1
+          if (nextLife >= p.maxLife) continue
+          if (nx < -1 || ny < -1 || nx > width + 1 || ny > height + 1) continue
+          moved.push({
+            ...p,
+            x: nx,
+            y: ny,
+            vx: p.vx * 0.94,
+            vy: p.vy * 0.94 + 0.03,
+            life: nextLife,
+          })
+        }
+        if (spawn.length === 0) return moved
+        return [...moved, ...spawn].slice(-MAX_PARTICLES)
       })
+
+      setRipples((current) => {
+        const aged = []
+        for (const r of current) {
+          const nextAge = r.age + 1
+          if (nextAge >= r.maxAge) continue
+          aged.push({ ...r, age: nextAge })
+        }
+        if (spawnRipples.length === 0) return aged
+        return [...aged, ...spawnRipples].slice(-MAX_RIPPLES)
+      })
+
+      if (tickEvents.length > 0) {
+        setEvents((current) =>
+          [
+            ...tickEvents.map((ev) => ({
+              id: nextEventId++,
+              text: `[${(tick + 1).toString().padStart(4, "0")}] ${ev.text}`,
+              color: ev.color,
+            })),
+            ...current,
+          ].slice(0, MAX_EVENTS),
+        )
+      }
+
+      setBars((current) =>
+        current.map((v, i) => {
+          const drift = Math.sin((tick + i * 7) / 6) * 0.18
+          const noise = Math.random() * 0.35
+          const next = v * 0.78 + (drift + noise) * 0.4
+          return clamp(next + (Math.random() < 0.05 ? 0.45 : 0), 0.05, 1)
+        }),
+      )
+
+      const mp = mouseRef.current
+      if (mp.x >= 0 && mp.y >= 0) {
+        setTrail((current) => {
+          const head = current[0]
+          if (head && head.x === mp.x && head.y === mp.y) return current
+          return [{ x: mp.x, y: mp.y, t: tick + 1 }, ...current].slice(0, MAX_TRAIL)
+        })
+      } else if (trail.length > 0) {
+        setTrail((current) => current.slice(0, -1))
+      }
+
+      fpsRef.current.frames++
+      const now = Date.now()
+      const elapsed = now - fpsRef.current.lastTime
+      if (elapsed >= 500) {
+        const measured = (fpsRef.current.frames * 1000) / elapsed
+        setFps(measured)
+        fpsRef.current.frames = 0
+        fpsRef.current.lastTime = now
+      }
+
+      setTick((t) => t + 1)
     }, 33)
     return () => clearInterval(interval)
-  }, [height, renderer, width])
+  }, [paused, height, renderer, width, tick, trail.length])
 
   useEffect(() => {
     if (!Number.isFinite(duration) || duration <= 0) return
@@ -411,9 +843,51 @@ function App({ duration }) {
       lastX: event.x,
       lastY: event.y,
       lastAt: now,
+      moved: false,
+      startedAt: now,
     }
     setActiveId(shape.id)
     renderer.setMousePointer("move")
+    const cx = shape.x + shape.width / 2
+    const cy = shape.y + shape.height / 2
+    setParticles((current) => {
+      const ring = []
+      for (let i = 0; i < 18; i++) {
+        const angle = (i / 18) * Math.PI * 2
+        ring.push(
+          makeParticle(cx, cy, {
+            angle,
+            speed: 0.5 + Math.random() * 0.7,
+            color: shape.color,
+            maxLife: 20,
+          }),
+        )
+      }
+      return [...current, ...ring].slice(-MAX_PARTICLES)
+    })
+    setRipples((current) =>
+      [
+        ...current,
+        {
+          id: nextRippleId++,
+          cx: Math.round(cx),
+          cy: Math.round(cy),
+          age: 0,
+          maxAge: 18,
+          color: shape.color,
+        },
+      ].slice(-MAX_RIPPLES),
+    )
+    setEvents((current) =>
+      [
+        {
+          id: nextEventId++,
+          text: `[${tick.toString().padStart(4, "0")}] grabbed ${shape.label}`,
+          color: shape.color,
+        },
+        ...current,
+      ].slice(0, MAX_EVENTS),
+    )
   }
 
   const dragShape = (shape, event) => {
@@ -426,6 +900,7 @@ function App({ duration }) {
     const vx = ((event.x - drag.lastX) / elapsed) * 28
     const vy = ((event.y - drag.lastY) / elapsed) * 28
 
+    if (event.x !== drag.lastX || event.y !== drag.lastY) drag.moved = true
     drag.lastX = event.x
     drag.lastY = event.y
     drag.lastAt = now
@@ -445,18 +920,70 @@ function App({ duration }) {
     )
   }
 
-  const endDrag = (shape, event) => {
-    event.stopPropagation()
-    if (dragRef.current?.id === shape.id) dragRef.current = null
+  const releaseDrag = (shape, event) => {
+    if (event && event.stopPropagation) event.stopPropagation()
+    const drag = dragRef.current?.id === shape.id ? dragRef.current : null
+    if (!drag) return
+    dragRef.current = null
     setActiveId(null)
     renderer.setMousePointer("default")
+
+    const cx = shape.x + shape.width / 2
+    const cy = shape.y + shape.height / 2
+    const speed = Math.hypot(shape.vx, shape.vy)
+    const wasClick = !drag.moved
+    const count = wasClick ? 14 : 16 + Math.floor(speed * 9)
+    setParticles((current) =>
+      [...current, ...burstAt(cx, cy, count, shape.color)].slice(-MAX_PARTICLES),
+    )
+    setRipples((current) =>
+      [
+        ...current,
+        {
+          id: nextRippleId++,
+          cx: Math.round(cx),
+          cy: Math.round(cy),
+          age: 0,
+          maxAge: wasClick ? 16 : 24,
+          color: shape.color,
+        },
+      ].slice(-MAX_RIPPLES),
+    )
+    setEvents((current) =>
+      [
+        {
+          id: nextEventId++,
+          text: wasClick
+            ? `[${tick.toString().padStart(4, "0")}] poked ${shape.label}`
+            : `[${tick.toString().padStart(4, "0")}] flung ${shape.label} (v=${speed.toFixed(2)})`,
+          color: shape.color,
+        },
+        ...current,
+      ].slice(0, MAX_EVENTS),
+    )
   }
 
-  const compact = width < 78 || height < 22
+  const handleMouseMove = (event) => {
+    mouseRef.current = { x: event.x, y: event.y }
+  }
+
+  const handleMouseLeave = () => {
+    mouseRef.current = { x: -1, y: -1 }
+  }
+
+  const compact = width < 110 || height < 26
 
   return (
-    <box width="100%" height="100%" backgroundColor="#050711" position="relative" overflow="hidden">
-      <ColorMixLayer tick={tick} compact={compact} />
+    <box
+      width="100%"
+      height="100%"
+      backgroundColor="#050711"
+      position="relative"
+      overflow="hidden"
+      onMouseMove={handleMouseMove}
+      onMouseOut={handleMouseLeave}
+    >
+      <Ripples ripples={ripples} />
 
       <box width="100%" height="100%" flexDirection="column" padding={1} gap={1}>
         <box
@@ -474,19 +1001,32 @@ function App({ duration }) {
             font="tiny"
             color={["#20f6ff", "#7c5cff", "#ff3df2", "#ffbf3d", "#5dff9b"]}
           />
-          <text selectable={false} fg="#dfe5ff" attributes={TextAttributes.BOLD}>
-            React components rendering through OpenTUI Core on Node.js
-          </text>
+          <box flexDirection="row" gap={2} alignItems="center">
+            <text selectable={false} fg="#dfe5ff" attributes={TextAttributes.BOLD}>
+              React components rendering through OpenTUI Core on Node.js
+            </text>
+            <text selectable={false} fg="#5dff9b" attributes={TextAttributes.DIM}>
+              {paused ? "[paused]" : "[live]"}
+            </text>
+          </box>
         </box>
 
         <box flexDirection={compact ? "column" : "row"} gap={1} flexGrow={1}>
           <RuntimeCard tick={tick} width={width} height={height} />
           <JsxCard tick={tick} />
+          <TelemetryCard
+            tick={tick}
+            fps={fps}
+            particleCount={particles.length}
+            events={events}
+            paused={paused}
+            bars={bars}
+          />
         </box>
 
         <box height={1} flexDirection="row" justifyContent="space-between">
           <text selectable={false} fg="#8490bb" attributes={TextAttributes.DIM}>
-            Drag the floating shapes; release to fling. Press q or Esc to quit
+            drag shapes · space=pause · r=scatter · c=clear · ?=help · q/esc=quit
           </text>
           <text selectable={false} fg={palette[Math.floor(tick / 3) % palette.length]} attributes={TextAttributes.BOLD}>
             {`frame ${tick.toString().padStart(4, "0")}`}
@@ -498,6 +1038,8 @@ function App({ duration }) {
         <ShapeTrail key={`${shape.id}-trail`} shape={shape} tick={tick} />
       ))}
 
+      <ParticleField particles={particles} />
+
       {shapes.map((shape, index) => {
         const enriched = { ...shape, index }
         return (
@@ -508,7 +1050,8 @@ function App({ duration }) {
             active={activeId === shape.id}
             onMouseDown={(event) => beginDrag(enriched, event)}
             onMouseDrag={(event) => dragShape(enriched, event)}
-            onMouseDragEnd={(event) => endDrag(enriched, event)}
+            onMouseDragEnd={(event) => releaseDrag(enriched, event)}
+            onMouseUp={(event) => releaseDrag(enriched, event)}
             onMouseOver={() => renderer.setMousePointer("move")}
             onMouseOut={() => {
               if (!dragRef.current) renderer.setMousePointer("default")
@@ -516,6 +1059,10 @@ function App({ duration }) {
           />
         )
       })}
+
+      <MouseCursor trail={trail} current={mouseRef.current} tick={tick} />
+
+      {showHelp && <HelpOverlay tick={tick} />}
     </box>
   )
 }

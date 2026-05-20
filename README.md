@@ -13,14 +13,12 @@ npm run demo:react   # kinda bonkers
   - [@jitl/opentui-core](https://npmjs.com/package/@jitl/opentui-core)
   - [@jitl/opentui-react](https://npmjs.com/package/@jitl/opentui-react)
 
-## Screencasts
+## `¯\_(ツ)_/¯`
 
-### Core demo
+Click to view videos
 
 [![Core demo preview](./docs/core-poster.png)](https://justjake.github.io/opentui-node-demo/#core)
 
-### React demo
 
 [![React demo preview](./docs/react-poster.png)](https://justjake.github.io/opentui-node-demo/#react)
 
-GitHub strips inline video players from repository READMEs. The previews above open the playable screencasts.

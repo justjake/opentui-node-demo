@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenTUI Node Demo Screencasts</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #050711;
+        color: #eef3ff;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 18% 12%, rgba(32, 246, 255, 0.18), transparent 34rem),
+          radial-gradient(circle at 86% 4%, rgba(255, 61, 242, 0.16), transparent 30rem),
+          linear-gradient(180deg, #050711 0%, #0c1024 100%);
+      }
+
+      main {
+        width: min(1120px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 44px 0 56px;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: clamp(2rem, 5vw, 4.8rem);
+        line-height: 0.95;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0 0 30px;
+        max-width: 760px;
+        color: #aeb9e8;
+        font-size: 1.05rem;
+        line-height: 1.55;
+      }
+
+      section {
+        display: grid;
+        gap: 18px;
+        margin-top: 34px;
+      }
+
+      h2 {
+        margin: 0;
+        color: #8cfffb;
+        font-size: 1.1rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      video {
+        display: block;
+        width: 100%;
+        border: 1px solid rgba(140, 255, 251, 0.28);
+        border-radius: 8px;
+        background: #03040c;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>OpenTUI under Node.js</h1>
+      <p>
+        Playable captures of the imperative core demo and the JSX-powered
+        React demo.
+      </p>
+
+      <section id="core">
+        <h2>Core demo</h2>
+        <video controls preload="metadata" poster="./core-poster.png">
+          <source
+            src="https://raw.githubusercontent.com/justjake/opentui-node-demo/main/core.mp4"
+            type="video/mp4"
+          />
+        </video>
+      </section>
+
+      <section id="react">
+        <h2>React demo</h2>
+        <video controls preload="metadata" poster="./react-poster.png">
+          <source
+            src="https://raw.githubusercontent.com/justjake/opentui-node-demo/main/react.mp4"
+            type="video/mp4"
+          />
+        </video>
+      </section>
+    </main>
+  </body>
+</html>

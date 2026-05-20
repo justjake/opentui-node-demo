@@ -17,8 +17,10 @@ npm run demo:react   # kinda bonkers
 
 ### Core demo
 
-<video src="./core.mp4" controls width="100%"></video>
+[![Core demo preview](./docs/core-poster.png)](https://justjake.github.io/opentui-node-demo/#core)
 
 ### React demo
 
-<video src="./react.mp4" controls width="100%"></video>
+[![React demo preview](./docs/react-poster.png)](https://justjake.github.io/opentui-node-demo/#react)
+
+GitHub strips inline video players from repository READMEs. The previews above open the playable screencasts.

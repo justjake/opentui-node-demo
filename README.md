@@ -12,3 +12,13 @@ npm run demo:react   # kinda bonkers
 - NPM packages:
   - [@jitl/opentui-core](https://npmjs.com/package/@jitl/opentui-core)
   - [@jitl/opentui-react](https://npmjs.com/package/@jitl/opentui-react)
+
+## Screencasts
+
+### Core demo
+
+<video src="./core.mp4" controls width="100%"></video>
+
+### React demo
+
+<video src="./react.mp4" controls width="100%"></video>
